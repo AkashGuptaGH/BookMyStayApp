@@ -2,9 +2,9 @@ import java.util.HashMap;
 
 /**
  * BookMyStayApp
- * Demonstrates centralized room inventory management using HashMap.
+ * Demonstrates room search and availability check.
  *
- * @version 3.0
+ * @version 4.0
  */
 
 // Inventory manager class
@@ -15,30 +15,92 @@ class RoomInventory {
         inventory = new HashMap<>();
     }
 
-    // Register room type with availability
     public void addRoomType(String roomType, int availability) {
         inventory.put(roomType, availability);
     }
 
-    // Update availability
-    public void updateAvailability(String roomType, int newAvailability) {
-        if (inventory.containsKey(roomType)) {
-            inventory.put(roomType, newAvailability);
-        } else {
-            System.out.println("Room type not found: " + roomType);
-        }
-    }
-
-    // Get availability
     public int getAvailability(String roomType) {
         return inventory.getOrDefault(roomType, 0);
     }
 
-    // Display current inventory
-    public void displayInventory() {
-        System.out.println("=== Current Room Inventory ===");
-        for (String roomType : inventory.keySet()) {
-            System.out.println(roomType + " | Available: " + inventory.get(roomType));
+    public HashMap<String, Integer> getAllInventory() {
+        return new HashMap<>(inventory); // defensive copy
+    }
+}
+
+// Abstract Room class
+abstract class Room {
+    protected String type;
+    protected int beds;
+    protected double price;
+
+    public Room(String type, int beds, double price) {
+        this.type = type;
+        this.beds = beds;
+        this.price = price;
+    }
+
+    public String getType() {
+        return type;
+    }
+
+    public double getPrice() {
+        return price;
+    }
+
+    public abstract void displayDetails();
+}
+
+// Concrete room classes
+class SingleRoom extends Room {
+    public SingleRoom() {
+        super("Single Room", 1, 2000.0);
+    }
+
+    @Override
+    public void displayDetails() {
+        System.out.println(type + " | Beds: " + beds + " | Price: ₹" + price);
+    }
+}
+
+class DoubleRoom extends Room {
+    public DoubleRoom() {
+        super("Double Room", 2, 3500.0);
+    }
+
+    @Override
+    public void displayDetails() {
+        System.out.println(type + " | Beds: " + beds + " | Price: ₹" + price);
+    }
+}
+
+class SuiteRoom extends Room {
+    public SuiteRoom() {
+        super("Suite Room", 3, 6000.0);
+    }
+
+    @Override
+    public void displayDetails() {
+        System.out.println(type + " | Beds: " + beds + " | Price: ₹" + price);
+    }
+}
+
+// Search service (read-only)
+class RoomSearchService {
+    private RoomInventory inventory;
+
+    public RoomSearchService(RoomInventory inventory) {
+        this.inventory = inventory;
+    }
+
+    public void searchAvailableRooms(Room[] rooms) {
+        System.out.println("=== Available Rooms ===");
+        for (Room room : rooms) {
+            int availability = inventory.getAvailability(room.getType());
+            if (availability > 0) {
+                room.displayDetails();
+                System.out.println("Available: " + availability);
+            }
         }
     }
 }
@@ -50,17 +112,17 @@ public class BookMyStayApp {
 
         // Register room types
         inventory.addRoomType("Single Room", 5);
-        inventory.addRoomType("Double Room", 3);
+        inventory.addRoomType("Double Room", 0); // unavailable
         inventory.addRoomType("Suite Room", 2);
 
-        // Display inventory
-        inventory.displayInventory();
+        // Create room objects
+        Room[] rooms = { new SingleRoom(), new DoubleRoom(), new SuiteRoom() };
 
-        // Update availability
-        inventory.updateAvailability("Double Room", 4);
+        // Search service
+        RoomSearchService searchService = new RoomSearchService(inventory);
 
-        // Display updated inventory
-        System.out.println("\nAfter update:");
-        inventory.displayInventory();
+        // Guest initiates search
+        searchService.searchAvailableRooms(rooms);
     }
 }
+

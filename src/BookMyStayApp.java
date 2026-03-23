@@ -1,165 +1,110 @@
-import java.io.*;
 import java.util.*;
 
-// ================= RESERVATION (SERIALIZABLE) =================
-class Reservation implements Serializable {
-    String guestName;
-    String roomType;
-    String roomId;
+class Service {
+    private String serviceId;
+    private String name;
+    private double price;
 
-    public Reservation(String guestName, String roomType) {
-        this.guestName = guestName;
-        this.roomType = roomType;
+    public Service(String serviceId, String name, double price) {
+        this.serviceId = serviceId;
+        this.name = name;
+        this.price = price;
     }
 
-    public void confirm(String id) {
-        this.roomId = id;
+    public double getPrice() {
+        return price;
     }
 
+    public String getName() {
+        return name;
+    }
+
+    @Override
     public String toString() {
-        return guestName + "," + roomType + "," + roomId;
+        return name + " (₹" + price + ")";
     }
 }
 
-// ================= INVENTORY =================
-class RoomInventory implements Serializable {
-    Map<String, Integer> stock = new HashMap<>();
+class Reservation {
+    private String reservationId;
+    private String guestName;
 
-    public void add(String type, int count) {
-        stock.put(type, count);
+    public Reservation(String reservationId, String guestName) {
+        this.reservationId = reservationId;
+        this.guestName = guestName;
     }
 
-    public synchronized boolean available(String type) {
-        return stock.getOrDefault(type, 0) > 0;
+    public String getReservationId() {
+        return reservationId;
     }
 
-    public synchronized void decrease(String type) {
-        stock.put(type, stock.get(type) - 1);
-    }
-
-    public synchronized void increase(String type) {
-        stock.put(type, stock.getOrDefault(type, 0) + 1);
-    }
-
-    public void show() {
-        System.out.println("\n=== INVENTORY ===");
-        stock.forEach((k, v) -> System.out.println(k + " → " + v));
+    public String getGuestName() {
+        return guestName;
     }
 }
 
-// ================= PERSISTENCE SERVICE (UC12 CORE) =================
-class PersistenceService {
+class AddOnServiceManager {
 
-    private static final String FILE = "booking_state.dat";
+    // reservationId -> list of services
+    private Map<String, List<Service>> reservationServices = new HashMap<>();
 
-    // SAVE STATE
-    public static void save(RoomInventory inventory, List<Reservation> history) {
-        try (ObjectOutputStream out = new ObjectOutputStream(
-                new FileOutputStream(FILE))) {
-
-            out.writeObject(inventory);
-            out.writeObject(history);
-
-            System.out.println("\nSTATE SAVED TO FILE");
-
-        } catch (IOException e) {
-            System.out.println("SAVE FAILED → " + e.getMessage());
-        }
+    // Add service to reservation
+    public void addService(String reservationId, Service service) {
+        reservationServices
+                .computeIfAbsent(reservationId, k -> new ArrayList<>())
+                .add(service);
     }
 
-    // LOAD STATE
-    public static Object[] load() {
-        try (ObjectInputStream in = new ObjectInputStream(
-                new FileInputStream(FILE))) {
-
-            RoomInventory inventory = (RoomInventory) in.readObject();
-            List<Reservation> history = (List<Reservation>) in.readObject();
-
-            System.out.println("\nSTATE RESTORED FROM FILE");
-
-            return new Object[]{inventory, history};
-
-        } catch (Exception e) {
-            System.out.println("NO PREVIOUS STATE FOUND (STARTING FRESH)");
-            return null;
-        }
-    }
-}
-
-// ================= BOOKING SERVICE =================
-class BookingService {
-
-    RoomInventory inventory;
-    List<Reservation> history;
-
-    public BookingService(RoomInventory inventory, List<Reservation> history) {
-        this.inventory = inventory;
-        this.history = history;
+    // Get services for reservation
+    public List<Service> getServices(String reservationId) {
+        return reservationServices.getOrDefault(reservationId, new ArrayList<>());
     }
 
-    public void book(String name, String type) {
+    // Calculate total cost
+    public double calculateTotalCost(String reservationId) {
+        return getServices(reservationId)
+                .stream()
+                .mapToDouble(Service::getPrice)
+                .sum();
+    }
 
-        if (!inventory.available(type)) {
-            System.out.println("NOT AVAILABLE → " + type);
+    // Print services
+    public void printServices(String reservationId) {
+        List<Service> services = getServices(reservationId);
+
+        System.out.println("\nReservation ID: " + reservationId);
+
+        if (services.isEmpty()) {
+            System.out.println("No add-on services selected.");
             return;
         }
 
-        inventory.decrease(type);
-
-        String id = UUID.randomUUID().toString();
-        Reservation r = new Reservation(name, type);
-        r.confirm(id);
-
-        history.add(r);
-
-        System.out.println("BOOKED → " + name);
-    }
-
-    public void showHistory() {
-        System.out.println("\n=== BOOKING HISTORY ===");
-        for (Reservation r : history) {
-            System.out.println(r);
+        System.out.println("Selected Add-on Services:");
+        for (Service s : services) {
+            System.out.println("- " + s);
         }
+
+        System.out.println("Total Add-on Cost: ₹" + calculateTotalCost(reservationId));
     }
 }
 
-// ================= MAIN (UC12 RECOVERY DEMO) =================
 public class BookMyStayApp {
-
     public static void main(String[] args) {
 
-        System.out.println("BOOKMY STAY SYSTEM (UC1–UC12)");
+        Reservation reservation = new Reservation("R101", "Lakshmi");
 
-        RoomInventory inventory;
-        List<Reservation> history;
+        Service spa = new Service("S1", "Spa", 1500);
+        Service breakfast = new Service("S2", "Breakfast", 500);
+        Service pickup = new Service("S3", "Airport Pickup", 1000);
 
-        // ================= RECOVERY =================
-        Object[] state = PersistenceService.load();
+        AddOnServiceManager manager = new AddOnServiceManager();
 
-        if (state == null) {
-            inventory = new RoomInventory();
-            history = new ArrayList<>();
+        // Guest selects multiple add-ons
+        manager.addService(reservation.getReservationId(), spa);
+        manager.addService(reservation.getReservationId(), breakfast);
+        manager.addService(reservation.getReservationId(), pickup);
 
-            inventory.add("Single Room", 2);
-            inventory.add("Double Room", 1);
-            inventory.add("Suite Room", 1);
-
-        } else {
-            inventory = (RoomInventory) state[0];
-            history = (List<Reservation>) state[1];
-        }
-
-        BookingService service = new BookingService(inventory, history);
-
-        // ================= OPERATIONS =================
-        service.book("Lakshmi", "Single Room");
-        service.book("Akash", "Double Room");
-        service.book("Priya", "Single Room");
-
-        service.showHistory();
-        inventory.show();
-
-        // ================= SAVE STATE (UC12) =================
-        PersistenceService.save(inventory, history);
+        // Display add-ons + cost
+        manager.printServices(reservation.getReservationId());
     }
 }

@@ -1,5 +1,12 @@
 import java.util.*;
 
+// ================= CUSTOM EXCEPTION =================
+class BookingException extends Exception {
+    public BookingException(String message) {
+        super(message);
+    }
+}
+
 // ================= ROOM =================
 abstract class Room {
     protected String type;
@@ -48,7 +55,6 @@ class Reservation {
     private String guestName;
     private String roomType;
     private String roomId;
-    private boolean cancelled = false;
 
     public Reservation(String guestName, String roomType) {
         this.guestName = guestName;
@@ -62,10 +68,6 @@ class Reservation {
         this.roomId = roomId;
         System.out.println("CONFIRMED → " + guestName + " | " + roomType + " | " + roomId);
     }
-
-    public String getRoomId() {
-        return roomId;
-    }
 }
 
 // ================= INVENTORY =================
@@ -76,11 +78,21 @@ class RoomInventory {
         stock.put(type, count);
     }
 
+    public boolean exists(String type) {
+        return stock.containsKey(type);
+    }
+
     public boolean available(String type) {
         return stock.getOrDefault(type, 0) > 0;
     }
 
-    public void decrease(String type) {
+    public void decrease(String type) throws BookingException {
+        if (!exists(type)) {
+            throw new BookingException("Invalid room type: " + type);
+        }
+        if (stock.get(type) <= 0) {
+            throw new BookingException("No availability for: " + type);
+        }
         stock.put(type, stock.get(type) - 1);
     }
 
@@ -116,9 +128,7 @@ class SearchService {
 class BookingService {
     private RoomInventory inventory;
     private Queue<Reservation> queue = new LinkedList<>();
-
-    // UC8: Booking History
-    private List<Reservation> bookingHistory = new ArrayList<>();
+    private List<Reservation> history = new ArrayList<>();
 
     public BookingService(RoomInventory inventory) {
         this.inventory = inventory;
@@ -126,57 +136,53 @@ class BookingService {
 
     public void addRequest(Reservation r) {
         queue.add(r);
-        System.out.println("REQUEST ADDED → " + r.getGuestName());
+        System.out.println("REQUEST → " + r.getGuestName());
     }
 
+    // ================= UC9 VALIDATION =================
     public void process() {
         Reservation r = queue.poll();
 
         if (r == null) {
-            System.out.println("No booking requests.");
+            System.out.println("No requests.");
             return;
         }
 
-        if (inventory.available(r.getRoomType())) {
+        try {
+            validate(r);
+
             String roomId = UUID.randomUUID().toString();
-
             inventory.decrease(r.getRoomType());
+
             r.confirm(roomId);
+            history.add(r);
 
-            // UC8: store history
-            bookingHistory.add(r);
-        } else {
-            System.out.println("NOT AVAILABLE → " + r.getGuestName());
+        } catch (BookingException e) {
+            System.out.println("BOOKING FAILED → " + e.getMessage());
         }
     }
 
-    // ================= UC8: REPORTING =================
+    // ================= UC9 VALIDATION LOGIC =================
+    private void validate(Reservation r) throws BookingException {
 
-    public void showBookingHistory() {
-        System.out.println("\n=== BOOKING HISTORY (UC8) ===");
-        for (Reservation r : bookingHistory) {
-            System.out.println(
-                    r.getGuestName() + " | " +
-                            r.getRoomType() + " | " +
-                            r.getRoomId()
-            );
+        if (r.getGuestName() == null || r.getGuestName().isEmpty()) {
+            throw new BookingException("Guest name cannot be empty");
+        }
+
+        if (!inventory.exists(r.getRoomType())) {
+            throw new BookingException("Room type not found: " + r.getRoomType());
+        }
+
+        if (!inventory.available(r.getRoomType())) {
+            throw new BookingException("Room not available: " + r.getRoomType());
         }
     }
 
-    public void generateReport() {
-        System.out.println("\n=== BOOKING REPORT (UC8) ===");
-
-        Map<String, Integer> countByRoom = new HashMap<>();
-
-        for (Reservation r : bookingHistory) {
-            countByRoom.put(r.getRoomType(),
-                    countByRoom.getOrDefault(r.getRoomType(), 0) + 1);
-        }
-
-        System.out.println("Total bookings: " + bookingHistory.size());
-
-        for (String type : countByRoom.keySet()) {
-            System.out.println(type + " → " + countByRoom.get(type));
+    // ================= UC8 + UC9 =================
+    public void showHistory() {
+        System.out.println("\n=== BOOKING HISTORY ===");
+        for (Reservation r : history) {
+            System.out.println(r.getGuestName() + " | " + r.getRoomType());
         }
     }
 }
@@ -185,43 +191,39 @@ class BookingService {
 public class BookMyStayApp {
     public static void main(String[] args) {
 
-        System.out.println("WELCOME TO BOOKMY STAY SYSTEM (UC1–UC8)");
+        System.out.println("BOOKMY STAY SYSTEM (UC1–UC9)");
 
-        // UC3 Inventory
+        // Inventory
         RoomInventory inventory = new RoomInventory();
         inventory.addRoom("Single Room", 2);
         inventory.addRoom("Double Room", 1);
         inventory.addRoom("Suite Room", 1);
 
-        // UC2 Rooms
+        // Rooms
         Room[] rooms = {
                 new SingleRoom(),
                 new DoubleRoom(),
                 new SuiteRoom()
         };
 
-        // UC4 Search
+        // Search
         SearchService search = new SearchService(inventory);
         search.search(rooms);
 
-        // UC5 + UC6 Booking
+        // Booking
         BookingService service = new BookingService(inventory);
 
         service.addRequest(new Reservation("Lakshmi", "Single Room"));
         service.addRequest(new Reservation("Akash", "Suite Room"));
         service.addRequest(new Reservation("Priya", "Double Room"));
-        service.addRequest(new Reservation("Ravi", "Double Room"));
+        service.addRequest(new Reservation("Ravi", "Deluxe Room")); // INVALID (UC9)
 
         service.process();
         service.process();
         service.process();
         service.process();
 
-        // UC8: History + Reporting
-        service.showBookingHistory();
-        service.generateReport();
-
-        // Final inventory
+        service.showHistory();
         inventory.show();
     }
 }
